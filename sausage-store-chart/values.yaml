@@ -2,7 +2,7 @@ global:
   imagePullPolicy: Always
 
 frontend:
-  image: akurnenkov/sausage_store_frontend:1.0.0
+  image: akurnenkov/sausage-frontend:latest
   replicas: 1
   revisionHistoryLimit: 3
   resources:
@@ -31,7 +31,7 @@ frontend:
     secretName: 2sem-students-projects-wildcard-secret
 
 backend:
-  image: akurnenkov/sausage_store_backend:1.0.0
+  image: akurnenkov/sausage-backend:latest
   replicas: 1
   revisionHistoryLimit: 3
   env:
@@ -92,7 +92,7 @@ backend:
           controlledValues: RequestsAndLimits
 
 backend-report:
-  image: akurnenkov/sausage_store_backend_report:1.0.0
+  image: akurnenkov/sausage-backend-report:latest
   replicas: 1
   revisionHistoryLimit: 3
   env:
