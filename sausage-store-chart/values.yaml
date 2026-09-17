@@ -1,78 +1,166 @@
 global:
   imagePullPolicy: Always
-  ###vault:
-  ###  host: ip
-  ###  name: vault
-  ###  vaultToken: someToken
-
 
 frontend:
-### В чарте frontend отсутствуют некоторые важные файлы. Поймите какие и опишите их.
+  image: akurnenkov/sausage_store_frontend:1.0.0
   replicas: 1
-  revisionHistoryLimit: 15
-  strategy:
-    type: Recreate
+  revisionHistoryLimit: 3
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "100m"
+  nginxConf: nginx.conf
+  containerPort: 80
   service:
     port: 80
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   ingress:
-    host: YOUR_STUDENT_HOSTNAME.students-projects.ru # Корректный домен будет указан в задании
+    enabled: true
+    ingressClassName: nginx
+    annotations: {}
+    host: akurnenkov.sem2.students-projects.ru
     path: /
     pathType: Prefix
-  containerPort: 80
-  image: YOUR_DOCKERHUB/sausage-frontend:latest
+    secretName: 2sem-students-projects-wildcard-secret
+
+backend:
+  image: akurnenkov/sausage_store_backend:1.0.0
+  replicas: 1
+  revisionHistoryLimit: 3
+  env:
+    POSTGRES_URI: jdbc:postgresql://postgresql:5432/sausage-store
+    POSTGRES_USER: store
+    POSTGRES_PASSWORD: storepassword
+    MONGO_URI: mongodb://root:rootpassword@mongodb:27017/sausage-reports?authSource=admin
+    reportPath: /logs/reports
+    logPath: /logs
   resources:
     requests:
       memory: "128Mi"
       cpu: "100m"
     limits:
-      memory: "128Mi"
-      cpu: "1"
-  nginxConf: nginx.conf
-
-backend:
+      memory: "256Mi"
+      cpu: "500m"
+  containerPort: 8080
+  service:
+    port: 8080
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  livenessProbe:
+    httpGet:
+      path: /actuator/health
+      port: 8080
+    initialDelaySeconds: 60
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /actuator/health
+      port: 8080
+    initialDelaySeconds: 20
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
   annotations:
     path: /actuator/prometheus
     port: "8080"
     scrape: "true"
-  env:
-    postgresUri: jdbc:postgresql://postgresql:5432/sausage-store
-    postgresUser: store
-    postgresPassword: storepassword
-    reportPath: /logs/reports
-    logPath: /logs
-  service:
-    port: 8080
-  revisionHistoryLimit: 15
-  replicas: 1
-  strategy:
-  ### Опишите стратегию RollingUpdate для бэкенда
-  image: YOUR_DOCKERHUB/sausage-backend:latest
-  imagePullPolicy: Always
-  resources:
-    requests:
-      memory: "256Mi"
-      cpu: "100m"
-    limits:
-      memory: "512Mi"
-      cpu: "1"
-  containerPort: 8080
-  livenessProbe:
-  ### Опишите LivenessProbe для бэкенда
   vpa:
-  ### Опишите VPA для бэкенда
+    updatePolicy:
+      updateMode: "Auto"
+    resourcePolicy:
+      containerPolicies:
+        - containerName: "*"
+          minAllowed:
+            cpu: "100m"
+            memory: "256Mi"
+          maxAllowed:
+            cpu: "1"
+            memory: "512Mi"
+          controlledResources: ["cpu", "memory"]
+          controlledValues: RequestsAndLimits
 
 backend-report:
-### Опишите значения для backend-report
-### Приложение должно использовать стратегию Recreate
-### Приложение использует переменную PORT - порт, на котором оно запустится и DB - Uri-подключение к mongodb. 
-### DB положите в Secret, PORT в ConfigMap
-### Опишите HPA для backend-report
+  image: akurnenkov/sausage_store_backend_report:1.0.0
+  replicas: 1
+  revisionHistoryLimit: 3
+  env:
+    PORT: 8081
+    DB: mongodb://root:rootpassword@mongodb:27017/sausage-reports?authSource=admin
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+  containerPort: 8081
+  service:
+    port: 8081
+  strategy:
+    type: Recreate
+  hpa:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    metrics:
+      - type: Resource
+        resource:
+          name: memory
+          target:
+            type: Utilization
+            averageUtilization: 80
+      - type: Resource
+        resource:
+          name: cpu
+          target:
+            type: Utilization
+            averageUtilization: 80
 
 infra:
   postgresql:
-  ### Опишите необходимые переменные для развертывания PostgresQL в кластере Kubernetes
+    image: postgres:15-alpine
+    env:
+      POSTGRES_DB: sausage-store
+      POSTGRES_USER: store
+      POSTGRES_PASSWORD: storepassword
+    containerPort: 5432
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "50m"
+      limits:
+        memory: "256Mi"
+        cpu: "100m"
+    storageSize: 1Gi
+
   mongodb:
+    image: mongo:7.0
     env:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: rootpassword
     containerPort: 27017
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "50m"
+      limits:
+        memory: "256Mi"
+        cpu: "100m"
+    storageSize: 1Gi
+    init:
+      enabled: true
+      database: sausage-store
+      appUser: store
+      appPassword: storepassword
