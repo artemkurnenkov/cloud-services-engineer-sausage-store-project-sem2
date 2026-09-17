@@ -1,0 +1,4 @@
+# -- Исключенные файлы из контекста сборки
+.vscode
+Dockerfile
+README.md

@@ -1,32 +1,28 @@
-# Start from the latest golang base image
-FROM golang:latest as builder
+# -- Образ для сборки
+FROM golang:1.27.1-alpine3.24 AS build
 
-# Set the Current Working Directory inside the container
 WORKDIR /app
 
-# Copy go mod and sum files
-COPY go.mod go.sum ./
+RUN apk add --no-cache git
 
-# Download all dependencies. Dependencies will be cached if the go.mod and go.sum files are not changed
+COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy the source from the current directory to the Working Directory inside the container
 COPY . .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+  go build -a -installsuffix cgo -o main .
 
-# Build the Go app
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
+# -- Runtime образ
+FROM alpine:3.21.7
 
+WORKDIR /app
 
-######## Start a new stage from scratch #######
-FROM alpine:latest  
+RUN addgroup -S -g 65532 nonroot && adduser -S -u 65532 -G nonroot nonroot
 
-WORKDIR /root/
+COPY --from=build /app/main .
 
-# Copy the Pre-built binary file from the previous stage
-COPY --from=builderer /app/main .
+USER 65532:65532
 
-# Expose port 8080 to the outside world
-EXPOSE 8080
+EXPOSE 8081
 
-# Command to run the executable
-CMD ["/app/main"] 
+CMD ["./main"]
